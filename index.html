@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SVG Coffee Cup — Weather-Aware Sky + Seasons + Freshness</title>
+  <style>
+    :root{
+      --coffee-color:#6f4e37;
+      --coffee-surface-color:#3b1f0e;
+      --steam-speed:8s;
+      --steam-opacity:0.6;
+      --cup-color:#0b1220;
+
+      /* Day skies */
+      --sky-top-day:#6fb8ff;
+      --sky-bottom-day:#dff3ff;
+      --sun:#ffd166;
+
+      /* Night skies */
+      --sky-top-night:#0a2140;
+      --sky-bottom-night:#0f2c55;
+      --moon:#f4f7ff;
+
+      /* Dawn/Dusk skies */
+      --sky-top-dawn:#ffb06b;
+      --sky-bottom-dawn:#ffe9c9;
+      --sky-top-dusk:#7147ff;
+      --sky-bottom-dusk:#ffc0cb;
+
+      /* Autumn (day) */
+      --sky-top-autumn:#ffcf8a;
+      --sky-bottom-autumn:#ffd7b5;
+
+      --cloud:#ffffff;
+      --cloud-night:#d9e6ff;
+      --snow:#ffffff;
+      --rain:#b3d3ff;
+      --thunder:#fffb91;
+
+      /* Cloud cover */
+      --cloud-opacity: .95; /* 0..1 */
+
+      /* Wind animation variables (overridden by classes) */
+      --sway-deg: 2deg;
+      --sway-duration: 4s;
+      --flag-skew: 2deg;
+      --wave-duration: 2.4s;
+
+      /* Fog */
+      --fog-color: rgba(255,255,255,.55);
+      --fog-color-night: rgba(210,224,255,.45);
+
+      /* Drift direction */
+      --drift-dir: normal; /* or reverse */
+
+      /* Rain presentation */
+      --rain-angle: 0deg;   /* group rotation */
+      --rain-speed: 1.8s;   /* base drop fall speed */
+      --rain-length: 16;    /* px line length */
+
+      /* Puddles */
+      --puddle-count: 0; /* 0 when dry */
+    }
+
+    /* Seasonal tinting (affects day tones mostly) */
+    body.theme-summer{ --sky-top-day:#5bb8ff; --sky-bottom-day:#c7f2ff; }
+    body.theme-mild  { --sky-top-day:#7fb7ff; --sky-bottom-day:#e6f3ff; }
+    body.theme-cold  { --sky-top-day:#2b5c93; --sky-bottom-day:#bcd2ff; }
+    body.theme-autumn{ --sky-top-day:var(--sky-top-autumn); --sky-bottom-day:var(--sky-bottom-autumn); }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif;display:grid;place-items:center;min-height:100vh;background:#0f172a;color:#e5e7eb;margin:0;padding:24px;position:relative;overflow:hidden}
+
+    /* Full-bleed SVG background */
+    #sky-bg{position:fixed;inset:0;z-index:-1;display:block;width:100vw;height:100vh}
+    svg{width:360px;height:auto;display:block}
+
+    textarea{width:100%;min-height:130px;background:#0b1220;color:#e5e7eb;border:1px solid #1f2937;border-radius:12px;padding:12px;font-family:monospace}
+    button{background:#22c55e;border:0;color:#06250f;padding:10px 16px;border-radius:12px;font-weight:700;cursor:pointer;margin-top:8px}
+
+    /* Coffee surface ripple animation */
+    .coffee-surface { animation: ripple 0.8s infinite ease-in-out; transform-origin: center; }
+    @keyframes ripple { 0%{ transform: rotate(0deg) skewX(0deg);} 25%{ transform: rotate(0.5deg) skewX(1deg);} 50%{ transform: rotate(0deg) skewX(0deg);} 75%{ transform: rotate(-0.5deg) skewX(-1deg);} 100%{ transform: rotate(0deg) skewX(0deg);} }
+
+    /* Steam animations */
+    .steam { opacity: var(--steam-opacity); filter: blur(0.3px); }
+    .steam path { fill: url(#steamGrad); }
+    @keyframes rise { 0%{ transform: translateY(0) scale(0.95); opacity:0;} 10%{ opacity:1;} 100%{ transform: translateY(-120px) scale(1.1); opacity:0;} }
+    .steam g { animation: rise var(--steam-speed) linear infinite; }
+    .steam g:nth-child(2){ animation-delay: calc(var(--steam-speed) * .33); }
+    .steam g:nth-child(3){ animation-delay: calc(var(--steam-speed) * .66); }
+
+    /* Sky element motion */
+    .cloud{ opacity: var(--cloud-opacity); }
+    .cloud g{ filter: drop-shadow(0 2px 6px rgba(0,0,0,.08)); }
+    .drift{ animation: drift 45s linear infinite; animation-direction: var(--drift-dir); }
+    .drift.slow{ animation-duration: 70s; }
+    .drift.fast{ animation-duration: 28s; }
+    @keyframes drift{ from{ transform: translateX(-20%)} to{ transform: translateX(120%)} }
+
+    .sunPulse{ transform-origin: 120px 140px; animation: sunpulse 6s ease-in-out infinite; }
+    @keyframes sunpulse{ 0%,100%{ transform: scale(1)} 50%{ transform: scale(1.05)} }
+
+    /* Night elements */
+    .twinkle{ animation: twinkle 3s ease-in-out infinite; }
+    .twinkle:nth-child(odd){ animation-duration: 4.2s }
+    @keyframes twinkle{ 0%,100%{ opacity:.3 } 50%{ opacity:.9 } }
+
+    /* Snow */
+    .snowflake{ animation: fall 9s linear infinite; opacity:.9 }
+    .snowflake:nth-child(odd){ animation-duration: 12s }
+    @keyframes fall{ from{ transform: translateY(-10%) } to{ transform: translateY(110%) } }
+
+    /* Rain */
+    .raindrop{ stroke: var(--rain); stroke-width:2; stroke-linecap:round; opacity:.9; }
+    .rainfall{ transform-origin:center; }
+    .rainfall .dropGroup{ animation: slantfall var(--rain-speed) linear infinite; }
+    .rainfall .dropGroup:nth-child(3n){ animation-duration: calc(var(--rain-speed) * .8) }
+    .rainfall .dropGroup:nth-child(4n){ animation-duration: calc(var(--rain-speed) * 1.2) }
+    @keyframes slantfall{ from{ transform: translate(-5px,-5%) } to{ transform: translate(5px,110%) } }
+
+    /* Puddle ripples */
+    .puddleRipple{ fill:none; stroke: var(--puddle-stroke, #a3c6ff); stroke-width:1.2; opacity:.7; }
+    .puddleRipple{ animation: rippleExpand var(--puddle-speed, 2.4s) ease-out infinite; }
+    .puddleRipple:nth-child(2n){ animation-duration: calc(var(--puddle-speed, 2.4s) * 1.2) }
+    .puddleRipple:nth-child(3n){ animation-duration: calc(var(--puddle-speed, 2.4s) * 1.4) }
+    @keyframes rippleExpand{ 0%{ r:2; opacity:.7 } 70%{ opacity:.25 } 100%{ r:36; opacity:0 } }
+
+    /* Raindrop splashes */
+    .splash path{ fill:none; stroke: var(--rain); stroke-width:2; stroke-linecap:round; opacity:0; animation: sploosh var(--splash-speed, .9s) ease-out infinite; }
+    .splash path:nth-child(2){ animation-duration: calc(var(--splash-speed, .9s) * 1.2) }
+    @keyframes sploosh{ 0%{ opacity:0; transform: translateY(0) scale(0.6); } 12%{ opacity:1; } 100%{ opacity:0; transform: translateY(-10px) scale(1); } }
+
+    /* Lightning */
+    .bolt{ fill: var(--thunder); filter: drop-shadow(0 0 6px rgba(255,255,180,.85)); opacity:0; }
+    .flash{ animation: flash 2.6s infinite; }
+    .flash:nth-child(2){ animation-duration: 3.4s }
+    .flash:nth-child(3){ animation-duration: 4.1s }
+    @keyframes flash{ 0%,92%{ opacity:0 } 93%{ opacity:1 } 95%{ opacity:.1 } 96%{ opacity:1 } 100%{ opacity:0 } }
+
+    /* Windy: sway tree & wave flag */
+    .sway{ transform-origin: bottom center; animation: sway var(--sway-duration) ease-in-out infinite; }
+    @keyframes sway{ 0%{ transform: rotate(calc(var(--sway-deg) * -1)); } 50%{ transform: rotate(var(--sway-deg)); } 100%{ transform: rotate(calc(var(--sway-deg) * -1)); } }
+
+    .flag-wave{ transform-origin: left center; animation: wave var(--wave-duration) ease-in-out infinite; }
+    @keyframes wave{ 0%,100%{ transform: skewX(calc(var(--flag-skew) * -1)) translateX(0) } 50%{ transform: skewX(var(--flag-skew)) translateX(2px) } }
+
+    /* Fog layers */
+    .fog{ display:none }
+    body.weather-fog .fog{ display:initial }
+    .fog rect{ fill: url(#fogGrad); }
+    .fogLayer{ animation: fogslide var(--fog-speed, 60s) linear infinite; }
+    .fogLayer.slow{ --fog-speed: 80s }
+    .fogLayer.fast{ --fog-speed: 45s }
+    @keyframes fogslide{ from{ transform: translateX(-20%) } to{ transform: translateX(20%) } }
+
+    /* Show/hide by theme */
+    .is-summer{ display:none }
+    .is-cold{ display:none }
+    .is-mild{ display:none }
+    .is-autumn{ display:none }
+    .is-day{ display:none }
+    .is-night{ display:none }
+    .is-dawn{ display:none }
+    .is-dusk{ display:none }
+    .is-rain{ display:none }
+    .is-snow{ display:none }
+    .is-thunder{ display:none }
+    .overcast{ display:none }
+
+    body.theme-summer .is-summer{ display:initial }
+    body.theme-cold .is-cold{ display:initial }
+    body.theme-mild .is-mild{ display:initial }
+    body.theme-autumn .is-autumn{ display:initial }
+
+    body.mode-day .is-day{ display:initial }
+    body.mode-night .is-night{ display:initial }
+    body.mode-dawn .is-dawn{ display:initial }
+    body.mode-dusk .is-dusk{ display:initial }
+
+    body.weather-rain .is-rain{ display:initial }
+    body.weather-snow .is-snow{ display:initial }
+    body.weather-thunder .is-thunder{ display:initial }
+
+    /* Puddle reflection color: sun by day/dawn/dusk, moon by night */
+    body.mode-night { --puddle-stroke: rgba(244,247,255,.85); }
+    body.mode-day, body.mode-dawn, body.mode-dusk { --puddle-stroke: rgba(255,209,102,.55); }
+
+    /* Cloud cover tiers */
+    body.cloudy-light  { --cloud-opacity: .6; }
+    body.cloudy-medium { --cloud-opacity: .85; }
+    body.cloudy-heavy  { --cloud-opacity: .98; }
+    body.cloudy-heavy  .overcast{ display:initial }
+
+    /* Wind tiers */
+    body.windy-light { --sway-deg: 2deg;  --sway-duration: 4s;  --flag-skew: 2deg;  --wave-duration: 2.4s; }
+    body.windy-breezy{ --sway-deg: 4deg;  --sway-duration: 3.5s;--flag-skew: 5deg;  --wave-duration: 2s; }
+    body.windy-windy { --sway-deg: 7deg;  --sway-duration: 3s;  --flag-skew: 8deg;  --wave-duration: 1.6s; }
+    body.windy-gale  { --sway-deg: 11deg; --sway-duration: 2.4s;--flag-skew: 12deg; --wave-duration: 1.2s; }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce){
+      *{ animation-duration: 0.001s !important; animation-iteration-count: 1 !important; }
+      .steam{ opacity: .3 }
+    }
+
+    .badge{ position:fixed; left:12px; bottom:12px; font-size:12px; padding:6px 10px; border-radius:999px; background:rgba(15,23,42,.7); color:#cbd5e1; border:1px solid rgba(255,255,255,.08)}
+
+    /* Freshness Card */
+    .card{ position:fixed; right:12px; bottom:12px; width:260px; background:rgba(15,23,42,.8); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:12px }
+    .meter{ height:10px; background:#0b1220; border-radius:999px; overflow:hidden; border:1px solid #223; margin-top:6px }
+    .meter > div{ height:100%; width:0%; background:linear-gradient(90deg,#22c55e,#a3e635); transition:width .6s ease }
+    .card small{ color:#9ca3af }
+
+    /* Seasonal extras */
+    .firefly{ fill:#fffacd; opacity:.9; filter: drop-shadow(0 0 6px rgba(255,255,180,.8)); animation: floaty 8s ease-in-out infinite; }
+    @keyframes floaty{ 0%{ transform: translateY(0) translateX(0); opacity:.6 } 50%{ transform: translateY(-18px) translateX(10px); opacity:1 } 100%{ transform: translateY(0) translateX(0); opacity:.6 } }
+
+    .leaf{ fill:#d97706; opacity:.95; stroke:#b45309; stroke-width:.6; filter: drop-shadow(0 1px 2px rgba(0,0,0,.25)); }
+    .leaf.fall{ animation: leafFall linear infinite; }
+    @keyframes leafFall{ from{ transform: translateY(-5%) rotate(0deg) } to{ transform: translateY(110%) rotate(180deg) } }
+
+    /* Snow buildup */
+    #snowbank{ transition: opacity .8s ease, transform 1.2s ease; }
+
+  </style>
+</head>
+<body class="theme-mild mode-day weather-clear">
+
+  <!-- Full-viewport SVG sky background -->
+  <svg id="sky-bg" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+    <defs>
+      <!-- Day/Night/Dawn/Dusk gradients -->
+      <linearGradient id="skyGradDay" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--sky-top-day)"/>
+        <stop offset="100%" stop-color="var(--sky-bottom-day)"/>
+      </linearGradient>
+      <linearGradient id="skyGradNight" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--sky-top-night)"/>
+        <stop offset="100%" stop-color="var(--sky-bottom-night)"/>
+      </linearGradient>
+      <linearGradient id="skyGradDawn" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--sky-top-dawn)"/>
+        <stop offset="100%" stop-color="var(--sky-bottom-dawn)"/>
+      </linearGradient>
+      <linearGradient id="skyGradDusk" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--sky-top-dusk)"/>
+        <stop offset="100%" stop-color="var(--sky-bottom-dusk)"/>
+      </linearGradient>
+      <radialGradient id="sunGrad" cx="0.5" cy="0.5" r="0.6">
+        <stop offset="0%" stop-color="var(--sun)" stop-opacity="1"/>
+        <stop offset="100%" stop-color="var(--sun)" stop-opacity="0"/>
+      </radialGradient>
+      <linearGradient id="fogGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="white" stop-opacity="0.0"/>
+        <stop offset="50%" stop-color="white" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="white" stop-opacity="0.0"/>
+      </linearGradient>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="30" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="fogBlur"><feGaussianBlur stdDeviation="12"/></filter>
+    </defs>
+
+    <!-- Sky base layers -->
+    <rect class="is-day"   width="1440" height="900" fill="url(#skyGradDay)"/>
+    <rect class="is-night" width="1440" height="900" fill="url(#skyGradNight)"/>
+    <rect class="is-dawn"  width="1440" height="900" fill="url(#skyGradDawn)"/>
+    <rect class="is-dusk"  width="1440" height="900" fill="url(#skyGradDusk)"/>
+
+    <!-- Sun & glow (day/dawn/dusk) -->
+    <g class="is-day is-dawn is-dusk sunPulse">
+      <circle cx="120" cy="140" r="70" fill="var(--sun)" filter="url(#glow)"/>
+      <circle cx="120" cy="140" r="160" fill="url(#sunGrad)"/>
+    </g>
+
+    <!-- Moon + stars (night) -->
+    <g class="is-night" opacity="0.95">
+      <g>
+        <circle cx="120" cy="140" r="38" fill="var(--moon)"/>
+        <circle cx="110" cy="140" r="38" fill="rgba(10,33,64,0.9)"/>
+      </g>
+      <g>
+        <circle class="twinkle" cx="300" cy="120" r="1.6" fill="#fff"/>
+        <circle class="twinkle" cx="460" cy="80" r="1.2" fill="#fff"/>
+        <circle class="twinkle" cx="720" cy="160" r="1.8" fill="#fff"/>
+        <circle class="twinkle" cx="980" cy="70" r="1.4" fill="#fff"/>
+        <circle class="twinkle" cx="1240" cy="140" r="1.5" fill="#fff"/>
+      </g>
+    </g>
+
+    <!-- Clouds: density varies per theme (opacity scaled by cloud cover) -->
+    <g class="cloud drift fast is-summer is-day is-dawn is-dusk" transform="translate(-200,130)">
+      <g fill="var(--cloud)">
+        <ellipse cx="150" cy="60" rx="70" ry="38"/>
+        <ellipse cx="210" cy="60" rx="50" ry="30"/>
+        <ellipse cx="110" cy="70" rx="45" ry="26"/>
+      </g>
+    </g>
+    <g class="cloud drift is-mild is-day is-dawn is-dusk" transform="translate(-400,220)">
+      <g fill="var(--cloud)">
+        <ellipse cx="130" cy="60" rx="70" ry="38"/>
+        <ellipse cx="190" cy="60" rx="50" ry="30"/>
+        <ellipse cx="90" cy="70" rx="45" ry="26"/>
+      </g>
+    </g>
+    <g class="cloud drift slow is-cold is-day is-dawn is-dusk" transform="translate(-500,160)">
+      <g fill="var(--cloud)" opacity="0.95">
+        <ellipse cx="160" cy="60" rx="80" ry="40"/>
+        <ellipse cx="230" cy="60" rx="60" ry="30"/>
+        <ellipse cx="110" cy="70" rx="55" ry="28"/>
+      </g>
+    </g>
+    <g class="cloud drift slow is-autumn is-day is-dawn is-dusk" transform="translate(-650,200)">
+      <g fill="#fff6e3" opacity="0.95">
+        <ellipse cx="160" cy="60" rx="80" ry="40"/>
+        <ellipse cx="230" cy="60" rx="60" ry="30"/>
+        <ellipse cx="110" cy="70" rx="55" ry="28"/>
+      </g>
+    </g>
+
+    <!-- Night clouds (subtle) -->
+    <g class="cloud drift slow is-night" transform="translate(-300,180)" opacity="0.6">
+      <g fill="var(--cloud-night)">
+        <ellipse cx="150" cy="60" rx="70" ry="38"/>
+        <ellipse cx="210" cy="60" rx="50" ry="30"/>
+        <ellipse cx="110" cy="70" rx="45" ry="26"/>
+      </g>
+    </g>
+
+    <!-- Extra clouds that appear as cloud cover rises -->
+    <g id="extraClouds" class="is-day is-dawn is-dusk">
+      <g class="cloud drift fast" transform="translate(-800,260)">
+        <g fill="var(--cloud)"><ellipse cx="140" cy="60" rx="60" ry="34"/><ellipse cx="200" cy="60" rx="45" ry="28"/></g>
+      </g>
+      <g class="cloud drift" transform="translate(-1000,180)">
+        <g fill="var(--cloud)"><ellipse cx="140" cy="60" rx="70" ry="36"/><ellipse cx="210" cy="60" rx="50" ry="30"/></g>
+      </g>
+      <g class="cloud drift slow" transform="translate(-1200,120)">
+        <g fill="var(--cloud)"><ellipse cx="150" cy="60" rx="75" ry="38"/><ellipse cx="220" cy="60" rx="55" ry="30"/></g>
+      </g>
+    </g>
+
+    <!-- Overcast veil for heavy cloud cover -->
+    <rect class="overcast" width="1440" height="900" fill="rgba(0,0,20,.12)"/>
+
+    <!-- Ground & Windy props -->
+    <g transform="translate(0,760)">
+      <rect x="0" y="120" width="1440" height="40" fill="#0f2a18" opacity=".6"/>
+      <!-- Tree -->
+      <g class="sway" transform="translate(180,0)">
+        <rect x="-8" y="20" width="16" height="110" fill="#5b3a1e"/>
+        <circle cx="0" cy="10" r="40" fill="#2f7d32"/>
+        <circle cx="-28" cy="26" r="26" fill="#2a6e2c"/>
+        <circle cx="26" cy="26" r="26" fill="#318a35"/>
+      </g>
+      <!-- Flag pole + flag (rotates to wind toward direction) -->
+      <g id="flagGroup" transform="translate(1180,10)">
+        <rect x="0" y="-10" width="6" height="180" fill="#6b7280"/>
+        <g class="flag-wave">
+          <path d="M6,6 C60,0 80,18 120,10 L120,50 C80,58 60,40 6,46 Z" fill="#ef4444" opacity="0.95"/>
+          <path d="M6,26 C40,22 60,30 100,26 L100,30 C60,34 40,26 6,30 Z" fill="#ffffff" opacity="0.85"/>
+        </g>
+      </g>
+    </g>
+
+    <!-- Snow (cold + precip) -->
+    <g class="is-snow">
+      <g class="snowflake" transform="translate(200,0)"><circle cx="0" cy="0" r="3" fill="var(--snow)"/></g>
+      <g class="snowflake" transform="translate(600,-120)"><circle cx="0" cy="0" r="2.5" fill="var(--snow)"/></g>
+      <g class="snowflake" transform="translate(1000,-80)"><circle cx="0" cy="0" r="2.8" fill="var(--snow)"/></g>
+      <g class="snowflake" transform="translate(400,-200)"><circle cx="0" cy="0" r="2.2" fill="var(--snow)"/></g>
+    </g>
+
+    <!-- Rain (auto-generated drops) -->
+    <g id="rainfall" class="rainfall is-rain is-thunder" style="transform: rotate(var(--rain-angle))"></g>
+
+    <!-- Lightning (shows only on thunder) -->
+    <g class="is-thunder">
+      <polygon class="bolt flash" points="900,180 860,260 910,240 880,320 940,230 900,240" />
+      <polygon class="bolt flash" points="300,220 270,290 315,275 295,330 340,260 305,268" />
+    </g>
+
+    <!-- Fog layers on top -->
+    <g class="fog" filter="url(#fogBlur)" opacity="0.75">
+      <g class="fogLayer slow">
+        <rect x="-100" y="120" width="1600" height="160" />
+      </g>
+      <g class="fogLayer">
+        <rect x="-200" y="300" width="1600" height="140" />
+      </g>
+      <g class="fogLayer fast" opacity="0.85">
+        <rect x="-300" y="500" width="1700" height="160" />
+      </g>
+    </g>
+
+    <!-- Fireflies (summer nights) -->
+    <g id="fireflies" class="is-night is-summer"></g>
+
+    <!-- Falling leaves (autumn) -->
+    <g id="leaves" class="is-autumn"></g>
+
+    <!-- Wind direction compass (top-right) -->
+    <g id="compass" transform="translate(1280,60)" opacity="0.85">
+      <circle cx="0" cy="0" r="32" fill="rgba(0,0,0,.25)" stroke="rgba(255,255,255,.35)"/>
+      <text x="0" y="-38" text-anchor="middle" font-size="10" fill="#e5e7eb">N</text>
+      <g id="needle">
+        <polygon points="0,-24 4,0 0,6 -4,0" fill="#93c5fd"/>
+      </g>
+    </g>
+
+    <!-- Snowbank (buildup on ground) -->
+    <g id="snowbank" transform="translate(0,860)" opacity="0">
+      <rect x="0" y="0" width="1440" height="40" fill="#e6f3ff" />
+    </g>
+
+    <!-- Puddles (bottom area) -->
+    <g id="puddles" transform="translate(0,860)"></g>
+    <!-- Splashes (bottom area) -->
+    <g id="splashes" transform="translate(0,860)"></g>
+  </svg>
+
+  <!-- Coffee cup + controls -->
+  <div>
+    <svg viewBox="0 0 320 260">
+      <defs>
+        <clipPath id="cupInnerClip">
+          <path d="M60,60 h160 a20,20 0 0 1 20,20 v70 a60,60 0 0 1 -60,60 h-80 a60,60 0 0 1 -60,-60 v-70 a20,20 0 0 1 20,-20 z"/>
+        </clipPath>
+        <linearGradient id="coffeeGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#3b1f0e"/>
+          <stop offset="100%" stop-color="var(--coffee-color)"/>
+        </linearGradient>
+        <linearGradient id="steamGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="white" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="white" stop-opacity="0.2"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Cup body (color now themable) -->
+      <path id="cupBody" d="M40,60 h200 a20,20 0 0 1 20,20 v70 a80,80 0 0 1 -80,80 h-80 a80,80 0 0 1 -80,-80 v-70 a20,20 0 0 1 20,-20 z"
+            fill="var(--cup-color)" stroke="#334155" stroke-width="3"/>
+
+      <!-- Coffee fill -->
+      <g clip-path="url(#cupInnerClip)">
+        <rect id="coffeeFill" x="40" y="140" width="200" height="60" fill="url(#coffeeGrad)"/>
+        <ellipse id="coffeeSurface" class="coffee-surface" cx="140" cy="140" rx="80" ry="8" fill="var(--coffee-surface-color)" opacity="0.8"/>
+      </g>
+
+      <!-- Steam -->
+      <g class="steam" transform="translate(100,58)">
+        <g><path d="M0,60 C-10,40 -2,30 4,14 C8,2 6,-6 0,-20"/></g>
+        <g><path d="M30,60 C20,42 28,30 34,14 C38,2 36,-6 30,-20"/></g>
+        <g><path d="M60,60 C50,42 58,30 64,14 C68,2 66,-6 60,-20"/></g>
+      </g>
+    </svg>
+
+    <textarea id="coffee-json">{
+  "level": 0.65,
+  "color": "#6f4e37",
+  "temperatureC": 72,
+  "surfaceColor": "#3b1f0e"
+}</textarea>
+    <button id="apply">Apply</button>
+  </div>
+
+  <!-- Weather / Freshness UI -->
+  <div class="badge" id="weatherBadge">Detecting weather…</div>
+  <div class="card" id="freshnessCard" aria-live="polite">
+    <strong>☕ Coffee Freshness</strong>
+    <div class="meter" aria-hidden="true"><div id="freshnessBar"></div></div>
+    <small id="freshnessMsg">Calculating…</small>
+  </div>
+
+  <script>
+    // ========= Coffee controls =========
+    const coffeeRect = document.getElementById('coffeeFill');
+    const coffeeSurface = document.getElementById('coffeeSurface');
+    const jsonArea = document.getElementById('coffee-json');
+    const applyBtn = document.getElementById('apply');
+
+    function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+    function mapTempToSteam(tC){
+      const t = clamp((tC - 20) / (95 - 20), 0, 1);
+      const speed = (12 - 3) * (1 - t) + 3;
+      const opacity = 0.15 + t * (0.9 - 0.15);
+      return { speed, opacity };
+    }
+
+    function applyConfig(cfg){
+      const level = clamp(Number(cfg.level), 0, 1);
+      const color = cfg.color;
+      const surfaceColor = cfg.surfaceColor || '#3b1f0e';
+      const temp = Number(cfg.temperatureC);
+
+      document.documentElement.style.setProperty('--coffee-color', color);
+      document.documentElement.style.setProperty('--coffee-surface-color', surfaceColor);
+
+      const innerTop = 90; const innerBottom = 190; const innerHeight = innerBottom - innerTop;
+      const fillH = innerHeight * level; const y = innerBottom - fillH;
+      coffeeRect.setAttribute('y', y); coffeeRect.setAttribute('height', Math.max(0, fillH));
+      coffeeSurface.setAttribute('cy', y);
+
+      const { speed, opacity } = mapTempToSteam(temp);
+      document.documentElement.style.setProperty('--steam-speed', speed + 's');
+      document.documentElement.style.setProperty('--steam-opacity', opacity.toFixed(2));
+    }
+
+    applyBtn.addEventListener('click', () => {
+      try { const cfg = JSON.parse(jsonArea.value); applyConfig(cfg); }
+      catch (e) { alert('Invalid JSON: ' + e.message); }
+    });
+
+    applyConfig(JSON.parse(jsonArea.value));
+
+    // ========= Seasonal extras generation =========
+    function spawnFireflies(){
+      const g = document.getElementById('fireflies');
+      g.innerHTML = '';
+      const count = 18;
+      for(let i=0;i<count;i++){
+        const cx = 60 + Math.random()*1320;
+        const cy = 120 + Math.random()*560;
+        const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        c.setAttribute('class','firefly drift');
+        c.setAttribute('r', String(1.2 + Math.random()*1.6));
+        c.setAttribute('cx', cx);
+        c.setAttribute('cy', cy);
+        c.style.animationDuration = (6 + Math.random()*6) + 's';
+        g.appendChild(c);
+      }
+    }
+
+    function spawnLeaves(){
+      const g = document.getElementById('leaves');
+      g.innerHTML = '';
+      const count = 28;
+      for(let i=0;i<count;i++){
+        const x = Math.random()*1440;
+        const y = -Math.random()*300;
+        const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+        p.setAttribute('class','leaf fall');
+        p.setAttribute('d','M0,0 C6,-8 14,-8 20,0 C14,6 6,6 0,0 Z');
+        p.setAttribute('transform',`translate(${x},${y}) rotate(${Math.random()*60-30})`);
+        p.style.animationDuration = (7 + Math.random()*6) + 's';
+        p.style.animationDelay = (Math.random()*4) + 's';
+        g.appendChild(p);
+      }
+    }
+
+    function setSnowbank(level){
+      const bank = document.getElementById('snowbank');
+      const h = clamp(level, 0, 1) * 40; // up to 40px height
+      bank.setAttribute('opacity', String(level));
+      bank.setAttribute('transform', `translate(0,${860 - h})`);
+    }
+
+    // ========= Weather normalization layer (Open-Meteo safe) =========
+    async function loadWeather(lat, lon) {
+      const url = new URL("https://api.open-meteo.com/v1/forecast");
+      url.searchParams.set("latitude", String(lat));
+      url.searchParams.set("longitude", String(lon));
+      url.searchParams.set("current_weather", "true");
+      url.searchParams.set("daily", "sunrise,sunset");
+      url.searchParams.set("hourly", "precipitation,rain,snowfall,cloudcover,weathercode,relativehumidity_2m");
+      url.searchParams.set("timezone", "auto");
+
+      const res = await fetch(url.toString(), { cache: "no-store" });
+      if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
+      const data = await res.json();
+
+      const { current_weather, hourly, daily, utc_offset_seconds } = data || {};
+      if (!current_weather || !hourly || !Array.isArray(hourly.time) || !daily) {
+        throw new Error("Malformed Open-Meteo payload");
+      }
+
+      const parseIso = (s) => new Date(s);
+      const nowUtcMs = Date.now();
+      const localNowMs = nowUtcMs + (Number(utc_offset_seconds) || 0) * 1000;
+
+      const hourlyTimes = hourly.time.map(parseIso);
+      let bestIdx = 0, bestDelta = Infinity;
+      for (let i = 0; i < hourlyTimes.length; i++) {
+        const d = Math.abs(hourlyTimes[i].getTime() - localNowMs);
+        if (d < bestDelta) { bestDelta = d; bestIdx = i; }
+      }
+
+      const pickHourly = (key, fallback) => {
+        const arr = hourly[key];
+        if (!Array.isArray(arr)) return fallback;
+        let val = arr[bestIdx];
+        if (typeof val === "number" && !Number.isNaN(val)) return val;
+        const near = [bestIdx-1,bestIdx+1,bestIdx-2,bestIdx+2].find(i => i>=0 && i<arr.length && typeof arr[i]==="number");
+        return typeof near === "number" ? arr[near] : fallback;
+      };
+
+      const sunrise = new Date(daily.sunrise[0]);
+      const sunset  = new Date(daily.sunset[0]);
+
+      const tempC          = Number(current_weather.temperature);
+      const windSpeedKph   = Number(current_weather.windspeed);
+      const windDirDegFrom = Number(current_weather.winddirection);
+      const weatherCodeNow = Number(current_weather.weathercode);
+      const isDay          = Number(current_weather.is_day) === 1;
+
+      const precipMm      = Number(pickHourly("precipitation", 0));
+      const hourlyCode    = Number(pickHourly("weathercode", weatherCodeNow));
+      const cloudCoverPct = clamp(Number(pickHourly("cloudcover", 50)), 0, 100);
+      const rhPct         = clamp(Number(pickHourly("relativehumidity_2m", 60)), 0, 100);
+
+      return {
+        tempC,
+        windSpeedMs: windSpeedKph / 3.6,
+        windSpeedKph,
+        windDirDegFrom,
+        weatherCode: hourlyCode,
+        isDay,
+        sunrise, sunset,
+        precipMm, cloudCoverPct, rhPct,
+        nowLocal: new Date(localNowMs),
+        daypart: computeDaypart(new Date(localNowMs), sunrise, sunset),
+      };
+    }
+
+    function computeDaypart(nowLocal, sunrise, sunset) {
+      const SKIRT = 60 * 60 * 1000;
+      const t = nowLocal.getTime(), sr = sunrise.getTime(), ss = sunset.getTime();
+      if (t >= sr - SKIRT && t <= sr + SKIRT) return "dawn";
+      if (t >= ss - SKIRT && t <= ss + SKIRT) return "dusk";
+      return (t > sr && t < ss) ? "day" : "night";
+    }
+
+    // ========= Renderer logic (classes, visuals) =========
+    const badge = document.getElementById('weatherBadge');
+
+    // Season by temp + month
+    function tempMonthToSeason(t, date){
+      const m = (date||new Date()).getMonth()+1; // 1-12
+      if (t >= 26) return 'summer';
+      if (t <= 5)  return 'cold'; // winter
+      // Shoulder seasons by month
+      if ([9,10,11].includes(m)) return 'autumn';
+      return 'mild';
+    }
+
+    // WMO helpers
+    const RAIN_CODES = new Set([51,53,55,56,57,61,63,65,66,67,80,81,82]);
+    const SNOW_CODES = new Set([71,73,75,77,85,86]);
+    const THUNDER_CODES = new Set([95,96,99]);
+    const FOG_CODES = new Set([45,48]);
+
+    function deriveCondition({t, precip, code}){
+      const thunder = THUNDER_CODES.has(code);
+      const isSnow = SNOW_CODES.has(code) || (!thunder && t <= 1 && precip >= 0.1);
+      if (isSnow) return 'snow';
+      const isRain = RAIN_CODES.has(code) || precip >= 0.2 || thunder;
+      return thunder ? 'thunder' : (isRain ? 'rain' : 'clear');
+    }
+
+    function windTier(speed){
+      if (speed >= 39) return 'gale';
+      if (speed >= 25) return 'windy';
+      if (speed >= 12) return 'breezy';
+      return 'light';
+    }
+
+    function setCloudCoverClasses(cover){
+      document.body.classList.remove('cloudy-light','cloudy-medium','cloudy-heavy');
+      if (cover >= 80){ document.body.classList.add('cloudy-heavy'); }
+      else if (cover >= 45){ document.body.classList.add('cloudy-medium'); }
+      else if (cover >= 15){ document.body.classList.add('cloudy-light'); }
+
+      const extra = document.querySelectorAll('#extraClouds > g');
+      extra.forEach((g, i)=>{
+        g.style.display = (cover >= (20 + i*20)) ? 'initial' : 'none';
+      });
+    }
+
+    function setClasses({season, mode, condition, t, windSpeed, foggy, windDirTo, cloudCover}){
+      const wind = windTier(windSpeed);
+      // East-west component from wind toward direction controls cloud drift
+      const eastComponent = Math.sin(windDirTo * Math.PI/180); // +1 = east, -1 = west
+      document.body.style.setProperty('--drift-dir', eastComponent < 0 ? 'reverse' : 'normal');
+
+      let cls = `theme-${season} mode-${mode} weather-${condition} windy-${wind}`;
+      if (foggy) cls += ' weather-fog';
+      document.body.className = cls;
+
+      setCloudCoverClasses(cloudCover);
+
+      // Seasonal extras visibility
+      const fireflies = document.getElementById('fireflies');
+      fireflies.style.display = (season==='summer' && mode==='night') ? 'initial' : 'none';
+      if (season==='summer' && mode==='night') spawnFireflies();
+
+      const leaves = document.getElementById('leaves');
+      leaves.style.display = (season==='autumn') ? 'initial' : 'none';
+      if (season==='autumn') spawnLeaves();
+
+      // Snowbank buildup when snowing or very cold
+      const wantSnowbank = (condition==='snow' || t <= 0);
+      setSnowbank(wantSnowbank ? 0.9 : 0);
+
+      const emoji = mode === 'night' ? '🌙' : mode === 'dawn' ? '🌅' : mode === 'dusk' ? '🌇' : '☀️';
+      const wx   = condition === 'snow' ? '❄️' : condition === 'rain' ? '🌧️' : condition === 'thunder' ? '⚡' : '⛅';
+      const fog  = foggy ? ' • fog 🌫️' : '';
+      badge.textContent = `${Math.round(t)}°C • ${season} • ${mode} ${emoji} • ${condition} ${wx}${fog} • wind ~${Math.round(windSpeed)} km/h • cloud ${Math.round(cloudCover)}%`;
+    }
+
+    function renderRain(intensity, windDirTo, windSpeed){
+      const group = document.getElementById('rainfall');
+      group.innerHTML = '';
+      const I = Math.min(intensity, 10) / 10;
+      const count = Math.round(20 + I * 120);
+      const length = 10 + I * 14;
+      const speed = 2.2 - I * 1.2;
+
+      const east = Math.sin(windDirTo * Math.PI/180);
+      const angle = east * (6 + Math.min(windSpeed,40) * 0.35);
+      document.body.style.setProperty('--rain-speed', `${speed}s`);
+      document.body.style.setProperty('--rain-length', length);
+      document.body.style.setProperty('--rain-angle', angle + 'deg');
+
+      const W = 1440, H = 900;
+      for(let i=0;i<count;i++){
+        const gx = Math.random()*W - 100;
+        const gy = -Math.random()*H*0.3;
+        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+        g.setAttribute('class','dropGroup');
+        g.setAttribute('transform',`translate(${gx},${gy})`);
+        const ln = document.createElementNS('http://www.w3.org/2000/svg','line');
+        ln.setAttribute('class','raindrop');
+        ln.setAttribute('x1','0'); ln.setAttribute('y1','0');
+        ln.setAttribute('x2','0'); ln.setAttribute('y2', String(length));
+        ln.setAttribute('opacity', String(0.5 + Math.random()*0.5));
+        g.appendChild(ln);
+        group.appendChild(g);
+      }
+
+      renderPuddles(I);
+      renderSplashes(I, angle);
+    }
+
+    function renderPuddles(I){
+      const puddles = document.getElementById('puddles');
+      puddles.innerHTML = '';
+      const count = Math.round(I * 10);
+      if (count === 0) return;
+      const W = 1440;
+      document.body.style.setProperty('--puddle-speed', `${2.4 - I*1.2}s`);
+
+      for(let i=0;i<count;i++){
+        const x = 40 + Math.random()*(W-80);
+        const y = 10 + Math.random()*20;
+        const emitter = document.createElementNS('http://www.w3.org/2000/svg','g');
+        emitter.setAttribute('transform',`translate(${x},${y})`);
+        const rings = 3 + Math.floor(Math.random()*2);
+        for(let r=0;r<rings;r++){
+          const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          c.setAttribute('class','puddleRipple');
+          c.setAttribute('cx','0'); c.setAttribute('cy','0'); c.setAttribute('r','2');
+          c.style.animationDelay = `${Math.random()*2.0}s`;
+          puddles.appendChild(emitter);
+          emitter.appendChild(c);
+        }
+      }
+    }
+
+    function renderSplashes(I, angleDeg){
+      const splashes = document.getElementById('splashes');
+      splashes.innerHTML = '';
+      const count = Math.round(I * 50);
+      if (count === 0) return;
+      const W = 1440;
+      splashes.style.setProperty('--splash-speed', `${0.9 - I*0.4}s`);
+
+      for(let i=0;i<count;i++){
+        const x = 20 + Math.random()*(W-40);
+        const y = 10 + Math.random()*18;
+        const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+        g.setAttribute('class','splash');
+        g.setAttribute('transform',`translate(${x},${y}) rotate(${angleDeg})`);
+        const left = document.createElementNS('http://www.w3.org/2000/svg','path');
+        left.setAttribute('d','M0,0 l-4,-6');
+        left.style.animationDelay = `${Math.random()*1.2}s`;
+        const right = document.createElementNS('http://www.w3.org/2000/svg','path');
+        right.setAttribute('d','M0,0 l4,-6');
+        right.style.animationDelay = `${Math.random()*1.2}s`;
+        g.appendChild(left); g.appendChild(right);
+        splashes.appendChild(g);
+      }
+    }
+
+    function rotateCompass(windDir){
+      const needle = document.getElementById('needle');
+      needle.setAttribute('transform', `rotate(${windDir})`);
+    }
+
+    function rotateFlagToWindToward(windDirFrom){
+      const flag = document.getElementById('flagGroup');
+      const toward = (windDirFrom + 180) % 360; // convert FROM → TO
+      const angle = toward - 90; // 90deg (E) aligns to pointing right
+      flag.setAttribute('transform', `translate(1180,10) rotate(${angle} 0 80)`);
+    }
+
+    // ========= Freshness meter =========
+    const freshnessBar = document.getElementById('freshnessBar');
+    const freshnessMsg = document.getElementById('freshnessMsg');
+
+    function computeFreshness(outsideC, coffeeC, rhPct){
+      // Target comfort temp for coffee vs outside: hotter when cold, cooler when hot
+      const target = (outsideC <= 5) ? 72 : (outsideC >= 28 ? 50 : 62 - (outsideC-12)*0.6);
+      const diff = Math.abs(coffeeC - target);
+      let score = 100 - diff * 3; // -3 points per °C away from target
+      // Humidity penalty for hot days (iced vibes)
+      if (outsideC >= 26 && rhPct >= 65) score -= 8;
+      score = clamp(score, 0, 100);
+      return { score, target: Math.round(target) };
+    }
+
+    function updateFreshnessUI(outsideC, rhPct){
+      // read current coffee temperature from JSON box
+      let coffeeC = 72;
+      try{ coffeeC = Number(JSON.parse(jsonArea.value).temperatureC) || 72; }catch{}
+      const { score, target } = computeFreshness(outsideC, coffeeC, rhPct);
+      freshnessBar.style.width = score + '%';
+      const mood = score>=85 ? 'Perfect' : score>=60 ? 'Good' : score>=35 ? 'Okay' : 'Needs tweak';
+      freshnessMsg.textContent = `${mood} • Coffee ${coffeeC.toFixed(0)}°C (target ~${target}°C)`;
+    }
+
+    // ========= Weather bootstrap + theme-linked coffee =========
+    function fallbackLondon(){
+      return loadWeather(51.5074, -0.1278);
+    }
+
+    function setCupByOutsideTemp(t){
+      // Cup color + steam linked to outside temp
+      // colder outside -> warmer color + more steam cap; hot outside -> cool color + reduced steam
+      const cupCold = '#0b1220';
+      const cupMild = '#1b2a44';
+      const cupHot  = '#12395d';
+      const cupSuperHot = '#0f4c81';
+      const cup = (t<=0) ? cupCold : (t<=12) ? cupMild : (t<=24) ? cupHot : cupSuperHot;
+      document.documentElement.style.setProperty('--cup-color', cup);
+
+      // If very hot outside, lower steam a bit visually even if coffee is hot
+      const baseOpacity = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--steam-opacity')) || 0.6;
+      const factor = (t>=28) ? 0.6 : (t>=20) ? 0.8 : 1;
+      document.documentElement.style.setProperty('--steam-opacity', (baseOpacity*factor).toFixed(2));
+
+      // Optional: lighten coffee color slightly for iced vibes when very hot
+      if (t>=30){
+        document.documentElement.style.setProperty('--coffee-color', '#7a5b45');
+        document.documentElement.style.setProperty('--coffee-surface-color', '#4a3426');
+      }
+    }
+
+    function applyWeather(wx){
+      const season = tempMonthToSeason(wx.tempC, wx.nowLocal);
+      const condition = deriveCondition({t: wx.tempC, precip: wx.precipMm, code: wx.weatherCode});
+      const mode = wx.daypart; // 'day'|'night'|'dawn'|'dusk'
+      const foggy = FOG_CODES.has(wx.weatherCode);
+
+      const windDirFrom = wx.windDirDegFrom;
+      const windDirTo = (windDirFrom + 180) % 360;
+
+      setClasses({
+        season,
+        mode,
+        condition,
+        t: wx.tempC,
+        windSpeed: wx.windSpeedKph,
+        foggy,
+        windDirTo,
+        cloudCover: wx.cloudCoverPct
+      });
+
+      rotateCompass(windDirFrom);            // FROM on compass
+      rotateFlagToWindToward(windDirFrom);   // flag shows TO by converting inside
+
+      // Seasonal extras
+      if(condition === 'rain' || condition === 'thunder'){
+        renderRain(wx.precipMm, windDirTo, wx.windSpeedKph);
+      }else{
+        document.getElementById('rainfall').innerHTML = '';
+        renderPuddles(0);
+        renderSplashes(0, 0);
+      }
+
+      // Snowbank easing based on temperature & precip
+      const snowLevel = clamp((wx.precipMm/5) + (wx.tempC<=0 ? 0.6 : 0), 0, 1);
+      setSnowbank(snowLevel);
+
+      // Theme-linked cup changes and freshness meter
+      setCupByOutsideTemp(wx.tempC);
+      updateFreshnessUI(wx.tempC, wx.rhPct);
+    }
+
+    async function initWeather(){
+      if(!('geolocation' in navigator)){
+        try{ applyWeather(await fallbackLondon()); }
+        catch{ document.getElementById('weatherBadge').textContent = 'Weather unavailable'; }
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(async (pos)=>{
+        try{
+          const { latitude:lat, longitude:lon } = pos.coords;
+          const wx = await loadWeather(lat, lon);
+          applyWeather(wx);
+        }catch(e){
+          try{ applyWeather(await fallbackLondon()); }
+          catch{ badge.textContent = 'Weather unavailable'; }
+        }
+      }, async ()=>{
+        try{ applyWeather(await fallbackLondon()); }
+        catch{ badge.textContent = 'Weather unavailable'; }
+      }, { enableHighAccuracy:false, maximumAge: 60_000, timeout: 8_000 });
+    }
+
+    // Minimal self-tests
+    (function(){
+      try{
+        console.assert(typeof computeFreshness === 'function', 'freshness fn');
+        console.assert(typeof setCupByOutsideTemp === 'function', 'cup theme fn');
+      }catch(err){ console.error('[Self-test] Failure:', err); }
+    })();
+
+    initWeather();
+  </script>
+</body>
+</html>
