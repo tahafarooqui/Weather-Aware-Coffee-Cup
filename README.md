@@ -3,6 +3,7 @@
 An interactive HTML, CSS, and JavaScript project that visualizes a coffee cup in a **dynamic SVG environment** that adapts in real time to **local weather conditions**.  
 The scene changes with the **time of day, seasons, and weather effects**, while a **freshness meter** calculates how close your coffee is to the perfect temperature based on outside conditions.
 
+[Demo:](https://tahafarooqui.github.io/Weather-Aware-Coffee-Cup/)
 
 ## ✨ Features
 
